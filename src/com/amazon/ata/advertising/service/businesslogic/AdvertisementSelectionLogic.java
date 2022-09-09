@@ -4,14 +4,18 @@ import com.amazon.ata.advertising.service.dao.ReadableDao;
 import com.amazon.ata.advertising.service.model.AdvertisementContent;
 import com.amazon.ata.advertising.service.model.EmptyGeneratedAdvertisement;
 import com.amazon.ata.advertising.service.model.GeneratedAdvertisement;
+import com.amazon.ata.advertising.service.model.RequestContext;
+import com.amazon.ata.advertising.service.targeting.TargetingEvaluator;
 import com.amazon.ata.advertising.service.targeting.TargetingGroup;
 
+import com.amazon.ata.advertising.service.targeting.predicate.TargetingPredicateResult;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.*;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 
 /**
@@ -57,16 +61,30 @@ public class AdvertisementSelectionLogic {
      */
     public GeneratedAdvertisement selectAdvertisement(String customerId, String marketplaceId) {
         GeneratedAdvertisement generatedAdvertisement = new EmptyGeneratedAdvertisement();
+
         if (StringUtils.isEmpty(marketplaceId)) {
             LOG.warn("MarketplaceId cannot be null or empty. Returning empty ad.");
         } else {
+
+            final RequestContext requestContext = new RequestContext(customerId, marketplaceId);
+            final TargetingEvaluator targetingEvaluator = new TargetingEvaluator(requestContext);
+            final Comparator<TargetingGroup> sortedByCTR = Comparator.comparingDouble(TargetingGroup::getClickThroughRate).reversed();
+            final SortedMap<TargetingGroup, AdvertisementContent> eligibleAdvertisements = new TreeMap<>(sortedByCTR);
             final List<AdvertisementContent> contents = contentDao.get(marketplaceId);
 
-            if (CollectionUtils.isNotEmpty(contents)) {
+            for (AdvertisementContent content : contents) {
+                List<TargetingGroup> targetingGroups = targetingGroupDao.get(content.getContentId());
+                targetingGroups.stream()
+                        .sorted(sortedByCTR)
+                        .filter(targetingGroup -> targetingEvaluator.evaluate(targetingGroup).isTrue())
+                        .findFirst()
+                        .ifPresent(targetingGroup -> eligibleAdvertisements.put(targetingGroup, content));
+            }
+            if (eligibleAdvertisements.isEmpty()) {
+                return generatedAdvertisement;
+            }
                 AdvertisementContent randomAdvertisementContent = contents.get(random.nextInt(contents.size()));
                 generatedAdvertisement = new GeneratedAdvertisement(randomAdvertisementContent);
-            }
-
         }
 
         return generatedAdvertisement;
