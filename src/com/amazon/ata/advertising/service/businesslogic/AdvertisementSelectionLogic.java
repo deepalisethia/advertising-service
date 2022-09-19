@@ -10,6 +10,7 @@ import com.amazon.ata.advertising.service.targeting.TargetingGroup;
 
 import com.amazon.ata.advertising.service.targeting.predicate.TargetingPredicateResult;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -68,7 +69,8 @@ public class AdvertisementSelectionLogic {
 
             final RequestContext requestContext = new RequestContext(customerId, marketplaceId);
             final TargetingEvaluator targetingEvaluator = new TargetingEvaluator(requestContext);
-            final Comparator<TargetingGroup> sortedByCTR = Comparator.comparingDouble(TargetingGroup::getClickThroughRate).reversed();
+            final Comparator<TargetingGroup> sortedByCTR = Comparator
+                    .comparingDouble(TargetingGroup::getClickThroughRate).reversed();
             final SortedMap<TargetingGroup, AdvertisementContent> eligibleAdvertisements = new TreeMap<>(sortedByCTR);
             final List<AdvertisementContent> contents = contentDao.get(marketplaceId);
 
@@ -80,11 +82,17 @@ public class AdvertisementSelectionLogic {
                         .findFirst()
                         .ifPresent(targetingGroup -> eligibleAdvertisements.put(targetingGroup, content));
             }
-            if (eligibleAdvertisements.isEmpty()) {
-                return generatedAdvertisement;
+//            if (eligibleAdvertisements.isEmpty()) {
+//                return generatedAdvertisement;
+//            }
+
+            if (MapUtils.isNotEmpty(eligibleAdvertisements)) {
+                final TargetingGroup highestCTR = eligibleAdvertisements.firstKey();
+                final AdvertisementContent renderedContent = eligibleAdvertisements.get(highestCTR);
+                generatedAdvertisement = new GeneratedAdvertisement(renderedContent);
             }
-                AdvertisementContent randomAdvertisementContent = contents.get(random.nextInt(contents.size()));
-                generatedAdvertisement = new GeneratedAdvertisement(randomAdvertisementContent);
+//                AdvertisementContent randomAdvertisementContent = contents.get(random.nextInt(contents.size()));
+//                generatedAdvertisement = new GeneratedAdvertisement(randomAdvertisementContent);
         }
 
         return generatedAdvertisement;
